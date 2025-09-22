@@ -44,8 +44,8 @@ return (
         </Button>
         
         <div className="flex justify-between w-full">
-          <LabeledHandle title="in" type="target" position={Position.Left} />
-          <LabeledHandle title="out" type="source" position={Position.Right} />
+          <LabeledHandle title="in" type="target" id="in" position={Position.Left} />
+          <LabeledHandle title="元となった経験" type="source" id="experience" position={Position.Right} />
         </div>
       </BaseNodeFooter>
     </BaseNode>

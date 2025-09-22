@@ -51,7 +51,9 @@ return (
         
         <div className="flex justify-between w-full">
           <LabeledHandle title="in" type="target" position={Position.Left} />
-          <LabeledHandle title="out" type="source" position={Position.Right} />
+          <div className="flex flex-col gap-2">
+            <LabeledHandle title="あなたの行動" type="source" id="action" position={Position.Right} />
+          </div>
         </div>
       </BaseNodeFooter>
     </BaseNode>

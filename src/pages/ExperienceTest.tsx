@@ -1,9 +1,11 @@
-import type { Experience } from "@/flowParts/types";
-import { ReactFlow, Background, Controls, type Edge, useNodesState, useEdgesState, addEdge, type Connection, MiniMap, type Node} from '@xyflow/react';
-import { nodeTypes } from "@/flowParts/nodes/nodeTypes";
+import type { Experience, Personality } from "@/flowParts/types";
+import { ReactFlow, Background, Controls, type Edge, useNodesState, useEdgesState, addEdge, type Connection, MiniMap, type Node, type OnConnectEnd, useReactFlow} from '@xyflow/react';
+import { nodeTypes } from "@/flowParts/nodes/types/nodeTypes";
 import { edgeTypes } from "@/flowParts/edges/edgeTypes";
 import '@xyflow/react/dist/style.css';
 import { useCallback } from "react";
+import { getLayoutedElements } from "@/lib/layout";
+import { getNodeTemplate } from "@/flowParts/nodes/utils/nodeUtils";
 
 const testExperience: Experience = {
     title: "海外留学の経験",
@@ -27,6 +29,22 @@ const testExperience: Experience = {
             description: "最初に黙って授業を受けていたときは全く伸びなかったので、積極的に話す必要があると学んだ。",
             experiences: []
           }
+        ],
+        abilities: [
+          {
+            type: "skill",
+            title: "英語力",
+            description: "英検2級",
+            experiences: []
+          },
+          {
+            type: "personality",
+            level: "high",
+            kind: "strength",
+            title: "外向性",
+            description: "外向性が高い",
+            experiences: []
+          } as Personality
         ]
       },
       {
@@ -39,10 +57,12 @@ const testExperience: Experience = {
             description: "言葉や文化の壁があっても、自分の考えを相手に届けたいという価値観。",
             experiences: []
           }
-        ]
+        ],
+        abilities: []
       }
     ]
 };
+
 
 // testExperienceからノードとエッジを生成する関数
 const generateNodesAndEdges = (experience: Experience) => {
@@ -53,7 +73,7 @@ const generateNodesAndEdges = (experience: Experience) => {
   const experienceNode: Node = {
     id: 'experience-1',
     type: 'experience',
-    position: { x: 100, y: 100 },
+    position: { x: 0, y: 0 }, // 一時的な位置、dagreで計算される
     data: {
       ...experience,
       id: 'experience-1'
@@ -66,7 +86,7 @@ const generateNodesAndEdges = (experience: Experience) => {
     const actionNode: Node = {
       id: `action-${actionIndex + 1}`,
       type: 'action',
-      position: { x: 400, y: 100 + (actionIndex * 200) },
+      position: { x: 0, y: 0 }, // 一時的な位置、dagreで計算される
       data: {
         title: action.title,
         description: action.description,
@@ -80,7 +100,8 @@ const generateNodesAndEdges = (experience: Experience) => {
       id: `experience-to-action-${actionIndex + 1}`,
       source: 'experience-1',
       target: `action-${actionIndex + 1}`,
-      type: 'straight'
+      sourceHandle: 'action',
+      type: 'step'
     });
     
     // 各根拠ノードを作成
@@ -88,7 +109,7 @@ const generateNodesAndEdges = (experience: Experience) => {
       const rationaleNode: Node = {
         id: `rationale-${actionIndex + 1}-${rationaleIndex + 1}`,
         type: 'rationale',
-        position: { x: 700, y: 100 + (actionIndex * 200) + (rationaleIndex * 150) },
+        position: { x: 0, y: 0 }, // 一時的な位置、dagreで計算される
         data: {
           title: rationale.title,
           description: rationale.description,
@@ -103,22 +124,80 @@ const generateNodesAndEdges = (experience: Experience) => {
         id: `action-${actionIndex + 1}-to-rationale-${actionIndex + 1}-${rationaleIndex + 1}`,
         source: `action-${actionIndex + 1}`,
         target: `rationale-${actionIndex + 1}-${rationaleIndex + 1}`,
-        type: 'straight'
+        type: 'step',
+        sourceHandle: 'rationale',
+      });
+    });
+
+    // 各能力ノードを作成
+    action.abilities.forEach((ability, abilityIndex) => {
+      const abilityNode: Node = {
+        id: `ability-${actionIndex + 1}-${abilityIndex + 1}`,
+        type: 'ability',
+        position: { x: 0, y: 0 }, // 一時的な位置、dagreで計算される
+        data: {
+          title: ability.title,
+          description: ability.description,
+          id: `ability-${actionIndex + 1}-${abilityIndex + 1}`,
+          kind: ability.type
+        }
+      };
+      nodes.push(abilityNode);
+      
+      // 行動から能力へのエッジ
+      edges.push({
+        id: `action-${actionIndex + 1}-to-ability-${actionIndex + 1}-${abilityIndex + 1}`,
+        source: `action-${actionIndex + 1}`,
+        target: `ability-${actionIndex + 1}-${abilityIndex + 1}`,
+        type: 'step',
+        sourceHandle: 'ability',
       });
     });
   });
   
-  return { nodes, edges };
+  // dagreでレイアウトを計算
+  return getLayoutedElements(nodes, edges);
 };
 
 const { nodes: initialNodes, edges: initialEdges } = generateNodesAndEdges(testExperience);
 export const ExperienceTest = () => {
-    const [nodes, , onNodesChange] = useNodesState<Node>(initialNodes);
+    const [nodes, setNodes, onNodesChange] = useNodesState<Node>(initialNodes);
     const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+    const { screenToFlowPosition } = useReactFlow();
     const onConnect = useCallback(
-        (params: Connection) => setEdges((edgesSnapshot) => addEdge({...params, type: 'straight'}, edgesSnapshot)),
-        [],
-      );
+      (params: Connection) => setEdges((edgesSnapshot) => addEdge({...params, type: 'straight'}, edgesSnapshot)),
+      [],
+    );
+    const onConnectEnd: OnConnectEnd = useCallback(
+      (event, connectionState) => {
+        console.log(connectionState);
+        // when a connection is dropped on the pane it's not valid
+        if (!connectionState.isValid && connectionState.fromNode?.id) {
+          const nextNode= connectionState.fromHandle?.id as keyof typeof nodeTypes;
+          // we need to remove the wrapper bounds, in order to get the correct position
+          const newNodeId = `${connectionState.fromNode?.id}-new-node`;
+          const { clientX, clientY } =
+            'changedTouches' in event ? event.changedTouches[0] : event;
+          
+          const newNode = getNodeTemplate(nextNode,newNodeId,screenToFlowPosition({
+            x: clientX,
+            y: clientY,
+          }));
+  
+          setNodes((nds) => [...nds, newNode]);
+          setEdges((eds) =>
+            [...eds, { 
+              id: `edge-${connectionState.fromNode!.id}-${newNodeId}`, 
+              source: connectionState.fromNode!.id, 
+              sourceHandle: connectionState.fromHandle!.id,
+              target: newNodeId,
+              type: 'step'
+            }],
+          );
+        }
+      },
+      [screenToFlowPosition],
+    );
     return (
         <ReactFlow 
           selectionKeyCode="Shift"
@@ -129,6 +208,7 @@ export const ExperienceTest = () => {
           onNodesChange={onNodesChange} 
           onEdgesChange={onEdgesChange} 
           onConnect={onConnect}
+          onConnectEnd={onConnectEnd}
           snapToGrid={true}
           snapGrid={[10, 10]}
         >
